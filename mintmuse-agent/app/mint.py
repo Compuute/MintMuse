@@ -8,6 +8,8 @@
 
 import json
 import logging
+import os
+from dotenv import load_dotenv
 from web3 import Web3
 from web3.exceptions import InvalidAddress
 from .config import get_env_var  # Custom utility to load env variables securely
@@ -33,6 +35,8 @@ ABI_PATH = get_env_var("ABI_PATH", default="solidity/contract_abi.json")
 # -----------------------------------------------------------------------------
 # Establish blockchain connection
 # -----------------------------------------------------------------------------
+
+print("🔍 BLOCKCHAIN_RPC_URL:", os.getenv("BLOCKCHAIN_RPC_URL")) # Debug print (remove in production)
 try:
     w3 = Web3(Web3.HTTPProvider(RPC_URL))
     if not w3.is_connected():

@@ -1,35 +1,69 @@
-# mintmuse-agent/app/routes/mint_route.py
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from ..mint import mint_nft
 
+# Optional: Import logic from agent (can be activated later)
+# from agents.root_agent import run_agent_chain
+
 # Initialize a new API router
 router = APIRouter()
 
-# Define the request body model for NFT minting
-class MintRequest(BaseModel):
-    recipient_address: str
-    token_uri: str
+# --------------------------
+# Mint NFT Endpoint
+# --------------------------
 
-# Define the response model
+class MintRequest(BaseModel):
+    recipient_address: str  # Wallet address that will receive the NFT
+    token_uri: str          # Metadata URL (e.g., IPFS or HTTPS)
+
 class MintResponse(BaseModel):
-    transaction_hash: str
+    transaction_hash: str   # Blockchain transaction hash
 
 @router.post("/mint-nft", response_model=MintResponse)
 async def mint_nft_endpoint(request: MintRequest):
     """
     Endpoint to mint an NFT on the blockchain.
-    - recipient_address: The wallet address to receive the NFT.
-    - token_uri: A URL or IPFS link pointing to the NFT metadata.
-
-    Returns:
-        The transaction hash of the minting transaction.
+    Request body:
+        - recipient_address: Ethereum-compatible wallet address.
+        - token_uri: Metadata describing the NFT (image, name, etc).
+    Response:
+        - transaction_hash: ID of the blockchain transaction.
     """
     try:
-        # Call the minting function from app/mint.py
         tx_hash = mint_nft(request.recipient_address, request.token_uri)
         return {"transaction_hash": tx_hash}
     except Exception as e:
-        # Handle any errors and return a 500 response
         raise HTTPException(status_code=500, detail=f"Minting failed: {str(e)}")
+
+# --------------------------
+# Interact with Agent Endpoint
+# --------------------------
+
+class InteractRequest(BaseModel):
+    user_input: str  # The user's input to the agent
+
+class InteractResponse(BaseModel):
+    agent_reply: str  # The agent's generated reply
+
+@router.post("/interact", response_model=InteractResponse)
+async def interact_endpoint(request: InteractRequest):
+    """
+    Endpoint to interact with the AI agent.
+    Request body:
+        - user_input: A message or instruction to the agent.
+    Response:
+        - agent_reply: The agent's generated response.
+    """
+
+    try:
+        # Placeholder agent logic – just echoing back the input
+        user_message = request.user_input
+        response = f"🤖 Agent echoes: '{user_message}'"
+
+        # 🔄 When agent is ready, replace with:
+        # response = run_agent_chain(user_message)
+
+        return {"agent_reply": response}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Interaction failed: {str(e)}")
