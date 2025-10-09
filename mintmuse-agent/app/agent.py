@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 import google.auth
 from google.adk.agents import Agent
+from agets.root_agent import RootAgent
 
 _, project_id = google.auth.default()
 os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
@@ -64,3 +65,4 @@ root_agent = Agent(
     instruction="You are a helpful AI assistant designed to provide accurate and useful information.",
     tools=[get_weather, get_current_time],
 )
+root_agent = RootAgent()

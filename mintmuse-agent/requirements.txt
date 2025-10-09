@@ -1,0 +1,22 @@
+# Core backend
+fastapi
+uvicorn
+requests
+
+# Web3 interaction
+web3
+
+# Environment variable support
+python-dotenv
+
+# OpenAI and Generative AI
+openai
+google-genai
+
+# Google Cloud SDKs
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+google-cloud-storage
+google-cloud-aiplatform
