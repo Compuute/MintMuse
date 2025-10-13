@@ -22,17 +22,24 @@ class MintResponse(BaseModel):
 @router.post("/mint-nft", response_model=MintResponse)
 async def mint_nft_endpoint(request: MintRequest):
     """
-    Endpoint to mint an NFT on the blockchain.
-    Request body:
-        - recipient_address: Ethereum-compatible wallet address.
-        - token_uri: Metadata describing the NFT (image, name, etc).
-    Response:
-        - transaction_hash: ID of the blockchain transaction.
+    Endpoint: POST /mint-nft
+    Purpose: Mints an NFT to a specified wallet with given metadata.
+    Input:
+        - recipient_address: Target wallet address (must be valid).
+        - token_uri: Link to metadata (e.g., JSON on IPFS).
+    Output:
+        - transaction_hash: Returned if minting is successful.
+
+    Troubleshooting:
+        - Ensure RPC URL is active and connected (localhost or Goerli).
+        - Check private key and contract address in `.env`.
+        - Watch for exceptions from web3 or contract ABI issues.
     """
     try:
         tx_hash = mint_nft(request.recipient_address, request.token_uri)
         return {"transaction_hash": tx_hash}
     except Exception as e:
+        # Return 500 if any unexpected error occurs during minting
         raise HTTPException(status_code=500, detail=f"Minting failed: {str(e)}")
 
 # --------------------------
@@ -48,11 +55,20 @@ class InteractResponse(BaseModel):
 @router.post("/interact", response_model=InteractResponse)
 async def interact_endpoint(request: InteractRequest):
     """
-    Endpoint to interact with the AI agent.
-    Request body:
-        - user_input: A message or instruction to the agent.
-    Response:
-        - agent_reply: The agent's generated response.
+    Endpoint: POST /interact
+    Purpose: Simulates an AI agent that responds to user input.
+    Input:
+        - user_input: A prompt or question from the user.
+    Output:
+        - agent_reply: Response from the agent (currently placeholder).
+
+    Development Note:
+        - Replace placeholder logic with `run_agent_chain()` for live agent.
+        - Good for testing backend integration before full AI pipeline.
+
+    Troubleshooting:
+        - Watch for missing dependencies or import errors.
+        - If using real agent, ensure memory, API key, and model configs are set.
     """
 
     try:
@@ -66,4 +82,5 @@ async def interact_endpoint(request: InteractRequest):
         return {"agent_reply": response}
 
     except Exception as e:
+        # Catch all backend errors and return to frontend
         raise HTTPException(status_code=500, detail=f"Interaction failed: {str(e)}")
