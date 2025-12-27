@@ -1,30 +1,48 @@
 import { useState } from "react";
 
 function App() {
+  // User prompt text
   const [prompt, setPrompt] = useState("");
+
+  // Loading indicator during AI generation
   const [loading, setLoading] = useState(false);
+
+  // Image preview URL returned from backend
   const [preview, setPreview] = useState(null);
+
+  // NFT metadata returned from backend (JSON object)
   const [metadata, setMetadata] = useState(null);
 
+  // Calls the backend /generate endpoint
   const generate = async () => {
     setLoading(true);
 
-    const res = await fetch("http://localhost:8000/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
-    });
+    try {
+      const res = await fetch("http://localhost:8000/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
 
-    const data = await res.json();
-    setPreview(data.preview_url);
-    setMetadata(data.metadata);
-    setLoading(false);
+      const data = await res.json();
+
+      // Save preview image URL
+      setPreview(data.preview_url);
+
+      // Save metadata for display and later minting
+      setMetadata(data.metadata);
+    } catch (error) {
+      console.error("Generation failed:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div style={{ padding: 30, fontFamily: "sans-serif", maxWidth: 600 }}>
       <h1>MintMuse — AI NFT Generator</h1>
 
+      {/* Prompt input field */}
       <textarea
         placeholder="Enter your prompt..."
         value={prompt}
@@ -32,6 +50,7 @@ function App() {
         style={{ width: "100%", height: 120 }}
       />
 
+      {/* Trigger AI generation */}
       <button
         onClick={generate}
         disabled={loading}
@@ -39,7 +58,8 @@ function App() {
       >
         {loading ? "Generating..." : "Generate"}
       </button>
-    {/* Display preview image */}
+
+      {/* Display preview image */}
       {preview && (
         <div style={{ marginTop: 20 }}>
           <h3>Preview</h3>

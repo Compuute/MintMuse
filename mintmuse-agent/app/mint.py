@@ -36,7 +36,9 @@ ABI_PATH = get_env_var("ABI_PATH", default="solidity/contract_abi.json")
 # Establish blockchain connection
 # -----------------------------------------------------------------------------
 
-print("🔍 BLOCKCHAIN_RPC_URL:", os.getenv("BLOCKCHAIN_RPC_URL")) # Debug print (remove in production)
+load_dotenv()  # Ensure .env is loaded when running locally
+
+print("🔍 BLOCKCHAIN_RPC_URL:", os.getenv("BLOCKCHAIN_RPC_URL"))  # Debug print (remove in production)
 try:
     w3 = Web3(Web3.HTTPProvider(RPC_URL))
     if not w3.is_connected():
@@ -51,7 +53,19 @@ except Exception as e:
 # -----------------------------------------------------------------------------
 try:
     with open(ABI_PATH) as abi_file:
-        contract_abi = json.load(abi_file)
+        raw_json = json.load(abi_file)
+
+        # --- NEW: support both Hardhat artifact and raw ABI list ---
+        # Case 1: Hardhat-style artifact: {"_format": "...", "contractName": "...", "abi": [...], ...}
+        if isinstance(raw_json, dict) and "abi" in raw_json:
+            contract_abi = raw_json["abi"]
+            logger.info("✅ Loaded ABI from Hardhat artifact JSON.")
+        # Case 2: Already a pure ABI list: [ {...}, {...}, ... ]
+        else:
+            contract_abi = raw_json
+            logger.info("✅ Loaded ABI from raw ABI JSON.")
+        # --- END NEW ---
+
     contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=contract_abi)
     logger.info("✅ Contract loaded successfully.")
 except Exception as e:
