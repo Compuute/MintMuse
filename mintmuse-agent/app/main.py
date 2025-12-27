@@ -15,7 +15,7 @@ app = FastAPI(
 )
 
 # Include the API routes (both /mint-nft and /interact are defined inside mint_route)
-app.include_router(mint_route.router)
+app.include_router(mint_route.router, prefix="/api")
 
 # Root endpoint for health check
 @app.get("/")

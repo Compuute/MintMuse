@@ -1,12 +1,17 @@
+# app/routes/mint_route.py
+
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
 from ..mint import mint_nft
 
 # Optional: Import logic from agent (can be activated later)
 # from agents.root_agent import run_agent_chain
 
 # Initialize a new API router
-router = APIRouter()
+router = APIRouter(prefix="/api")
 
 # --------------------------
 # Mint NFT Endpoint
@@ -17,7 +22,11 @@ class MintRequest(BaseModel):
     token_uri: str          # Metadata URL (e.g., IPFS or HTTPS)
 
 class MintResponse(BaseModel):
-    transaction_hash: str   # Blockchain transaction hash
+    status: str               # Success or error message
+    recipient: Optional[str] = None           # Wallet address that received the NFT
+    transaction_hash: Optional[str] = None   # Blockchain transaction hash
+    etherscan_link: Optional[str] = None    # Etherscan link for transaction
+    error: Optional[str] = None              # Error message if minting fails
 
 @router.post("/mint-nft", response_model=MintResponse)
 async def mint_nft_endpoint(request: MintRequest):
@@ -36,8 +45,8 @@ async def mint_nft_endpoint(request: MintRequest):
         - Watch for exceptions from web3 or contract ABI issues.
     """
     try:
-        tx_hash = mint_nft(request.recipient_address, request.token_uri)
-        return {"transaction_hash": tx_hash}
+        result = mint_nft(request.recipient_address, request.token_uri)
+        return MintResponse(**result)
     except Exception as e:
         # Return 500 if any unexpected error occurs during minting
         raise HTTPException(status_code=500, detail=f"Minting failed: {str(e)}")
