@@ -2,6 +2,7 @@
 
 import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.routes import mint_route
 
 # Print env var for debug (optional)
@@ -12,6 +13,15 @@ app = FastAPI(
     title="MintMuse Agent API",
     description="API for minting NFTs and interacting with the MintMuse AI agent.",
     version="0.1.0"
+)
+
+# Allow frontend (Vite default: http://localhost:5173) to call backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include the API routes (both /mint-nft and /interact are defined inside mint_route)
