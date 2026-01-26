@@ -32,7 +32,7 @@ function App() {
     setTokenId(null);
 
     try {
-      const res = await fetch("http://localhost:8000/api/generate", {
+      const res = await fetch("http://127.0.0.1:8000/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
@@ -46,6 +46,7 @@ function App() {
       }
 
       const data = await res.json();
+      console.log("GENERATE RESPONSE:", data);
 
       // Save preview image URL
       setPreview(data.preview_url || null);
@@ -71,7 +72,7 @@ function App() {
     setTokenId(null);
 
     try {
-      const res = await fetch("http://localhost:8000/api/mint", {
+      const res = await fetch("http://127.0.0.1:8000/api/mint", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -156,6 +157,14 @@ function App() {
           <img
             src={preview}
             alt="preview"
+            onError={(e) => {
+              console.error("Preview image failed to load:", e);
+              e.target.src =
+                "https://placehold.co/800x500/png?text=Image+Loading+Error";
+            }}
+            onLoad={(e) => {
+              console.log("Preview image loaded successfully");
+            }}
             style={{
               width: "100%",
               borderRadius: 8,

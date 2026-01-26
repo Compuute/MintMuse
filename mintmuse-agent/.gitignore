@@ -193,5 +193,7 @@ locust_env
 my_env.tfvars
 .streamlit_chats
 .saved_chats
-.env
-.requirements.txt
+
+# Generated NFT artifacts ( kept locally for development)
+app/storage/metadata/*.json
+app/storage/previews/*.png

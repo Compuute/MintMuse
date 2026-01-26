@@ -1,36 +1,55 @@
-# mintmuse-agent/app/main.py
+# app/main.py
 
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from app.routes import mint_route
 
-# Print env var for debug (optional)
+# Debug (optional)
 print("TEST_VAR is:", os.getenv("TEST_VAR"))
 
-# Initialize FastAPI app
 app = FastAPI(
     title="MintMuse Agent API",
     description="API for minting NFTs and interacting with the MintMuse AI agent.",
-    version="0.1.0"
+    version="0.1.0",
 )
 
-# Allow frontend (Vite default: http://localhost:5173) to call backend
+# ---- CORS: allow Vite + localhost variants ----
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include the API routes (both /mint-nft and /interact are defined inside mint_route)
+# ---- Serve local NFT artifacts (fallback when IPFS is down) ----
+# metadata JSON:  http://localhost:8000/metadata/<tokenId>.json
+# preview images: http://localhost:8000/previews/<filename>.png
+app.mount(
+    "/metadata",
+    StaticFiles(directory="app/storage/metadata"),
+    name="metadata",
+)
+app.mount(
+    "/previews",
+    StaticFiles(directory="app/storage/previews"),
+    name="previews",
+)
+
+# ---- API routes ----
 app.include_router(mint_route.router, prefix="/api")
 
-# Root endpoint for health check
 @app.get("/")
 def read_root():
-    """
-    Health check endpoint.
-    """
-    return {"message": "✅ MintMuse API is running!"}
+    return {
+        "message": "✅ MintMuse API is running!",
+        "docs": "http://localhost:8000/docs",
+    }

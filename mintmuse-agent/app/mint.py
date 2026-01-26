@@ -5,6 +5,8 @@
 # - Input validation
 # - Safer environment variable loading
 # - Optional structured return for frontend or API use
+# - NEW: Extract token_id from ERC-721 Transfer event (real tokenId)
+# - NEW: Checksummed addresses to avoid Web3 address issues
 
 import json
 import logging
@@ -35,10 +37,11 @@ ABI_PATH = get_env_var("ABI_PATH", default="solidity/contract_abi.json")
 # -----------------------------------------------------------------------------
 # Establish blockchain connection
 # -----------------------------------------------------------------------------
-
 load_dotenv()  # Ensure .env is loaded when running locally
 
-print("🔍 BLOCKCHAIN_RPC_URL:", os.getenv("BLOCKCHAIN_RPC_URL"))  # Debug print (remove in production)
+# Optional debug prints (safe to remove in production)
+print("🔍 RPC_URL:", RPC_URL)
+
 try:
     w3 = Web3(Web3.HTTPProvider(RPC_URL))
     if not w3.is_connected():
@@ -49,29 +52,37 @@ except Exception as e:
     raise
 
 # -----------------------------------------------------------------------------
+# Normalize / checksum addresses (avoid common Web3.py address issues)
+# -----------------------------------------------------------------------------
+try:
+    ACCOUNT_ADDRESS = w3.to_checksum_address(ACCOUNT_ADDRESS)
+    CONTRACT_ADDRESS = w3.to_checksum_address(CONTRACT_ADDRESS)
+except Exception as e:
+    logger.error(f"❌ Failed to checksum addresses: {e}")
+    raise
+
+# -----------------------------------------------------------------------------
 # Load contract ABI (defines smart contract's structure)
 # -----------------------------------------------------------------------------
 try:
     with open(ABI_PATH) as abi_file:
         raw_json = json.load(abi_file)
 
-        # --- NEW: support both Hardhat artifact and raw ABI list ---
-        # Case 1: Hardhat-style artifact: {"_format": "...", "contractName": "...", "abi": [...], ...}
+        # --- support both Hardhat artifact and raw ABI list ---
+        # Case 1: Hardhat-style artifact: {"abi": [...], ...}
         if isinstance(raw_json, dict) and "abi" in raw_json:
             contract_abi = raw_json["abi"]
             logger.info("✅ Loaded ABI from Hardhat artifact JSON.")
-        # Case 2: Already a pure ABI list: [ {...}, {...}, ... ]
+        # Case 2: Already a pure ABI list
         else:
             contract_abi = raw_json
             logger.info("✅ Loaded ABI from raw ABI JSON.")
-        # --- END NEW ---
 
     contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=contract_abi)
     logger.info("✅ Contract loaded successfully.")
 except Exception as e:
     logger.error(f"❌ Failed to load contract ABI: {e}")
     raise
-
 
 # -----------------------------------------------------------------------------
 # Helper function: Validate Ethereum address format
@@ -80,6 +91,27 @@ def validate_address(address: str):
     """Ensures the Ethereum address is valid before using it."""
     if not w3.is_address(address):
         raise InvalidAddress(f"Invalid Ethereum address: {address}")
+
+
+# -----------------------------------------------------------------------------
+# Helper function: Extract tokenId from ERC-721 Transfer event
+# -----------------------------------------------------------------------------
+def _extract_token_id_from_receipt(receipt) -> int | None:
+    """
+    Attempts to parse ERC-721 Transfer events from the tx receipt
+    and returns the minted tokenId.
+    """
+    try:
+        # Transfer(from, to, tokenId)
+        events = contract.events.Transfer().process_receipt(receipt)
+        if not events:
+            return None
+        # Take the last Transfer event (usually the mint event)
+        token_id = int(events[-1]["args"]["tokenId"])
+        return token_id
+    except Exception:
+        # If event decoding fails (ABI mismatch / no event), return None safely
+        return None
 
 
 # -----------------------------------------------------------------------------
@@ -94,37 +126,51 @@ def mint_nft(recipient_address: str, token_uri: str) -> dict:
         token_uri (str): URL or IPFS URI of the NFT metadata JSON.
 
     Returns:
-        dict: Transaction details (hash + optional explorer link)
+        dict: Transaction details (hash + token_id if found + optional explorer link)
     """
     try:
         validate_address(recipient_address)
+
+        # Normalize recipient to checksum to prevent downstream issues
+        recipient_address = w3.to_checksum_address(recipient_address)
 
         # Get the transaction count (nonce) for this account
         nonce = w3.eth.get_transaction_count(ACCOUNT_ADDRESS)
 
         # Build the transaction for minting
         tx = contract.functions.mintNFT(recipient_address, token_uri).build_transaction({
-            'from': ACCOUNT_ADDRESS,
-            'nonce': nonce,
-            'gas': 300_000,
-            'gasPrice': w3.to_wei('10', 'gwei'),
+            "from": ACCOUNT_ADDRESS,
+            "nonce": nonce,
+            "gas": 500_000,  # a bit higher to avoid out-of-gas surprises
+            "gasPrice": w3.to_wei("10", "gwei"),
         })
 
         # Sign transaction using the private key
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
 
         # Broadcast the transaction to the network
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         tx_hex = w3.to_hex(tx_hash)
 
-        logger.info(f"✅ NFT minted successfully! TxHash: {tx_hex}")
+        logger.info(f"✅ Mint tx submitted. TxHash: {tx_hex}")
+
+        # Wait for receipt so we can extract tokenId
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
+
+        token_id = _extract_token_id_from_receipt(receipt)
+
+        if token_id is not None:
+            logger.info(f"🎯 Mint confirmed. token_id={token_id}")
+        else:
+            logger.warning("⚠️ Mint confirmed but could not extract token_id from Transfer event.")
 
         # Return structured response for API or frontend
         return {
             "status": "success",
             "recipient": recipient_address,
             "tx_hash": tx_hex,
-            "etherscan_link": f"https://etherscan.io/tx/{tx_hex}"
+            "token_id": token_id,  # NEW
+            "etherscan_link": f"https://etherscan.io/tx/{tx_hex}",
         }
 
     except InvalidAddress as e:

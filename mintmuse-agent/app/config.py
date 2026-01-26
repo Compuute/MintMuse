@@ -1,26 +1,42 @@
 # mintmuse-agent/app/config.py
+# ------------------------------------------------------
+# Centralized environment variable loader
+# Ensures .env is always loaded correctly regardless of
+# how the application is started (uvicorn, tests, CLI)
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from the .env file into memory
-load_dotenv()
+# ------------------------------------------------------
+# Explicitly locate and load the .env file
+# This avoids issues with working directory differences
+# ------------------------------------------------------
 
-def get_env_var(name, default=None):
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = BASE_DIR / ".env"
+
+load_dotenv(dotenv_path=ENV_PATH)
+
+def get_env_var(name: str, default=None):
     """
     Retrieve a required or optional environment variable.
 
-    Parameters:
-    - name: The name of the environment variable
-    - default: Optional fallback value if variable is missing
+    Args:
+        name (str): Environment variable name
+        default (any, optional): Fallback value if variable is missing
 
     Returns:
-    - The value of the environment variable
+        str | any: Environment variable value
 
     Raises:
-    - ValueError if the variable is not found and no default is provided
+        ValueError: If variable is missing and no default is provided
     """
     value = os.getenv(name)
-    if not value and default is None:
-        raise ValueError(f"Missing required env var: {name}")
-    return value or default
+
+    if value is None or value == "":
+        if default is not None:
+            return default
+        raise ValueError(f"Missing required environment variable: {name}")
+
+    return value
