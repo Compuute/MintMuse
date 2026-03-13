@@ -1,140 +1,156 @@
-# 🚀 Agent Starter Pack
+# MintMuse — AI NFT Generator
 
-![Version](https://img.shields.io/pypi/v/agent-starter-pack?color=blue) [![1-Minute Video Overview](https://img.shields.io/badge/1--Minute%20Overview-gray)](https://youtu.be/jHt-ZVD660g) [![Docs](https://img.shields.io/badge/Documentation-gray)](https://googlecloudplatform.github.io/agent-starter-pack/) <a href="https://studio.firebase.google.com/new?template=https%3A%2F%2Fgithub.com%2FGoogleCloudPlatform%2Fagent-starter-pack%2Ftree%2Fmain%2Fsrc%2Fresources%2Fidx">
-  <picture>
-    <source
-      media="(prefers-color-scheme: dark)"
-      srcset="https://cdn.firebasestudio.dev/btn/try_light_20.svg">
-    <source
-      media="(prefers-color-scheme: light)"
-      srcset="https://cdn.firebasestudio.dev/btn/try_dark_20.svg">
-    <img
-      height="20"
-      alt="Try in Firebase Studio"
-      src="https://cdn.firebasestudio.dev/btn/try_blue_20.svg">
-  </picture>
-</a> [![Launch in Cloud Shell](https://img.shields.io/badge/Launch-in_Cloud_Shell-white)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Feliasecchig%2Fasp-open-in-cloud-shell&cloudshell_print=open-in-cs) ![Stars](https://img.shields.io/github/stars/GoogleCloudPlatform/agent-starter-pack?color=yellow)
-
-
-The `agent-starter-pack` is a collection of production-ready Generative AI Agent templates built for Google Cloud. <br>
-It accelerates development by providing a holistic, production-ready solution, addressing common challenges (Deployment & Operations, Evaluation, Customization, Observability) in building and deploying GenAI agents.
-
-| ⚡️ Launch | 🧪 Experiment  | ✅ Deploy | 🛠️ Customize |
-|---|---|---|---|
-| [Pre-built agent templates](./agents/) (ReAct, RAG, multi-agent, Live API). | [Vertex AI evaluation](https://cloud.google.com/vertex-ai/generative-ai/docs/models/evaluation-overview) and an interactive playground. | Production-ready infra with [monitoring, observability](https://googlecloudplatform.github.io/agent-starter-pack/guide/observability), and [CI/CD](https://googlecloudplatform.github.io/agent-starter-pack/guide/deployment) on [Cloud Run](https://cloud.google.com/run) or [Agent Engine](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview). | Extend and customize templates according to your needs. |
+MintMuse is an MVP that lets a user describe an artwork in plain text, generates the image with AI, and mints it as an NFT on the Ethereum blockchain (Sepolia testnet).
 
 ---
- 
-## ⚡ Get Started in 1 Minute
 
-Ready to build your AI agent? Simply run this command:
+## Architecture
 
-```bash
-# Create and activate a Python virtual environment
-python -m venv .venv && source .venv/bin/activate
-
-# Install the agent starter pack
-pip install agent-starter-pack
-
-# Create a new agent project
-agent-starter-pack create my-awesome-agent
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        User Browser                         │
+│                    React + Vite (frontend/)                  │
+│   Step 1: Describe  →  Step 2: Generate  →  Step 3: Mint    │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ HTTP (REST)
+┌──────────────────────────────▼──────────────────────────────┐
+│               FastAPI Backend (mintmuse-agent/)              │
+│                                                             │
+│  POST /api/generate                POST /api/mint           │
+│  ┌──────────────────┐       ┌──────────────────────────┐   │
+│  │ generate_image.py│       │     mint_route.py         │   │
+│  │  HuggingFace API │       │  lighthouse_storage_client│   │
+│  │  FLUX.1-schnell  │       │  → IPFS (Lighthouse)      │   │
+│  │  (AI model)      │       │  → local fallback         │   │
+│  └──────────────────┘       │  mint.py → Web3.py        │   │
+│                             └──────────────┬─────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                                             │ JSON-RPC
+┌────────────────────────────────────────────▼────────────────┐
+│          Ethereum Blockchain (Sepolia Testnet)               │
+│              MintMuseNFT.sol  (ERC-721)                      │
+│              Deployed via Hardhat (contracts/)               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**That's it!** You now have a fully functional agent project—complete with backend, frontend, and deployment infrastructure—ready for you to explore and customize.
-See [Installation Guide](https://googlecloudplatform.github.io/agent-starter-pack/guide/installation) for more options, or try with zero setup in [Firebase Studio](https://studio.firebase.google.com/new?template=https%3A%2F%2Fgithub.com%2FGoogleCloudPlatform%2Fagent-starter-pack%2Ftree%2Fmain%2Fsrc%2Fresources%2Fidx) or [Cloud Shell](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Feliasecchig%2Fasp-open-in-cloud-shell&cloudshell_print=open-in-cs).
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React, Vite |
+| Backend | Python, FastAPI, Uvicorn |
+| AI Image Generation | Hugging Face Inference API — FLUX.1-schnell |
+| Blockchain | Solidity, Hardhat, Web3.py |
+| Storage | IPFS via Lighthouse (local fallback) |
+| Network | Ethereum Sepolia testnet |
+| Foundation | GCP Agent Starter Pack (project scaffold) |
 
 ---
 
- 🆕 The starter pack offers full support for Agent Engine, a new fully managed solution to deploy agents. Simply run this command to get started:
+## Project Structure
 
-```bash
-agent-starter-pack create my-agent -d agent_engine -a adk_base
+```
+MintMuse/
+├── frontend/               # React UI (Vite)
+│   └── src/
+│       ├── App.jsx         # Main 3-step app (Describe → Generate → Mint)
+│       └── index.css       # Styling
+│
+├── mintmuse-agent/         # FastAPI backend
+│   └── app/
+│       ├── main.py         # FastAPI app + CORS + static file serving
+│       ├── generate_image.py  # HuggingFace image generation
+│       ├── mint.py         # Web3.py blockchain minting
+│       ├── routes/
+│       │   └── mint_route.py  # /api/generate and /api/mint endpoints
+│       └── services/
+│           └── lighthouse_storage_client.py  # IPFS upload + local fallback
+│
+├── contracts/              # Solidity smart contract
+│   └── contracts/
+│       └── MintMuseNFT.sol # ERC-721 NFT contract
+│
+└── solidity/               # Compiled ABI (used by backend)
+    └── contract_abi.json
 ```
 
-*See the [full list of options](https://googlecloudplatform.github.io/agent-starter-pack/cli/create) for details.*
+---
 
-## 🤖 Agents
+## User Flow
 
-| Agent Name                  | Description                                                                                                                       |
-|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| `adk_base`      | A base ReAct agent implemented using Google's [Agent Development Kit](https://github.com/google/adk-python) |
-| `agentic_rag` | A RAG agent for document retrieval and Q&A. Supporting [Vertex AI Search](https://cloud.google.com/generative-ai-app-builder/docs/enterprise-search-introduction) and [Vector Search](https://cloud.google.com/vertex-ai/docs/vector-search/overview).       |
-| `langgraph_base_react`      | An agent implementing a base ReAct agent using LangGraph |
-| `crewai_coding_crew`       | A multi-agent system implemented with CrewAI created to support coding activities       |
-| `live_api`       | A real-time multimodal RAG agent powered by Gemini, supporting audio/video/text chat with vector DB-backed responses                       |
-
-**More agents are on the way!** We are continuously expanding our [agent library](https://googlecloudplatform.github.io/agent-starter-pack/agents/overview). Have a specific agent type in mind? [Raise an issue as a feature request!](https://github.com/GoogleCloudPlatform/agent-starter-pack/issues/new?labels=enhancement)
-
-**🔍 ADK Samples**
-
-Looking to explore more ADK examples? Check out the [ADK Samples Repository](https://github.com/google/adk-samples) for additional examples and use cases demonstrating ADK's capabilities.
-
-#### Extra Features
-
-The `agent-starter-pack` offers two key features to accelerate and simplify the development of your agent:
-- **🔄 [CI/CD Automation (Experimental)](https://googlecloudplatform.github.io/agent-starter-pack/cli/setup_cicd)** - One command to set up a complete GitHub + Cloud Build pipeline for all environments
-- **📥 [Data Pipeline for RAG with Terraform/CI-CD](https://googlecloudplatform.github.io/agent-starter-pack/guide/data-ingestion)** - Seamlessly integrate a data pipeline to process embeddings for RAG into your agent system. Supporting [Vertex AI Search](https://cloud.google.com/generative-ai-app-builder/docs/enterprise-search-introduction) and [Vector Search](https://cloud.google.com/vertex-ai/docs/vector-search/overview).
-
-
-## High-Level Architecture
-
-This starter pack covers all aspects of Agent development, from prototyping and evaluation to deployment and monitoring.
-
-![High Level Architecture](docs/images/ags_high_level_architecture.png "Architecture")
+1. **Describe** — User types a text prompt describing the artwork
+2. **Generate** — Backend calls HuggingFace API (FLUX.1-schnell) to generate an image; metadata is built and a preview is returned to the frontend
+3. **Mint** — Backend uploads the image and metadata to IPFS (Lighthouse), then calls `mintNFT()` on the deployed ERC-721 contract via Web3.py; the transaction hash and token ID are returned to the user with a link to Etherscan
 
 ---
 
-## 🔧 Requirements
+## Running Locally
+
+### Prerequisites
 
 - Python 3.10+
-- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) (for deployment)
+- Node.js 18+
+- A [HuggingFace](https://huggingface.co) account with an API token
+- A funded Sepolia wallet + Alchemy/Infura RPC URL
+- A deployed `MintMuseNFT` contract (see `contracts/`)
 
+### Backend
 
-## 📚 Documentation
+```bash
+cd mintmuse-agent
+cp .env.example .env   # fill in HF_TOKEN, RPC_URL, PRIVATE_KEY, CONTRACT_ADDRESS etc.
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-Visit our [documentation site](https://googlecloudplatform.github.io/agent-starter-pack/) for comprehensive guides and references!
+API docs available at: http://localhost:8000/docs
 
-- [Getting Started Guide](https://googlecloudplatform.github.io/agent-starter-pack/guide/getting-started) - First steps with agent-starter-pack
-- [Installation Guide](https://googlecloudplatform.github.io/agent-starter-pack/guide/installation) - Setting up your environment
-- [Deployment Guide](https://googlecloudplatform.github.io/agent-starter-pack/guide/deployment) - Taking your agent to production
-- [Agent Templates Overview](https://googlecloudplatform.github.io/agent-starter-pack/agents/overview) - Explore available agent patterns
-- [CLI Reference](https://googlecloudplatform.github.io/agent-starter-pack/cli/) - Command-line tool documentation
+### Frontend
 
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-### Video Walkthrough:
+App available at: http://localhost:5173
 
-- **[Exploring the Agent Starter Pack](https://www.youtube.com/watch?v=9zqwym-N3lg)**: A comprehensive tutorial demonstrating how to rapidly deploy AI Agents using the Agent Starter Pack, covering architecture, templates, and step-by-step deployment.
+### Smart Contract (deploy once)
 
-- **[6-minute introduction](https://www.youtube.com/live/eZ-8UQ_t4YM?feature=shared&t=2791)** (April 2024): Explaining the Agent Starter Pack and demonstrating its key features. Part of the Kaggle GenAI intensive course.
+```bash
+cd contracts
+npm install
+npx hardhat run scripts/deploy.js --network sepolia
+```
 
-- **[120-minute livestream demo](https://www.youtube.com/watch?v=yIRIT_EtALs&t=235s)** (March 6, 2025): Watch us build 3 Agents in under 30 minutes using the `agent-starter-pack`!
+Copy the deployed contract address into your `.env`.
 
+---
 
-Looking for more examples and resources for Generative AI on Google Cloud? Check out the [GoogleCloudPlatform/generative-ai](https://github.com/GoogleCloudPlatform/generative-ai) repository for notebooks, code samples, and more!
+## Environment Variables
 
-## Contributing
+Create `mintmuse-agent/.env`:
 
-Contributions are welcome! See the [Contributing Guide](CONTRIBUTING.md).
+```
+HF_TOKEN=your_huggingface_token
+HF_MODEL=black-forest-labs/FLUX.1-schnell
 
-## Feedback
+RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_key
+PRIVATE_KEY=your_wallet_private_key
+ACCOUNT_ADDRESS=your_wallet_address
+CONTRACT_ADDRESS=deployed_contract_address
+ABI_PATH=solidity/contract_abi.json
 
-We value your input! Your feedback helps us improve this starter pack and make it more useful for the community.
+LIGHTHOUSE_API_KEY=your_lighthouse_key   # optional, uses local fallback if missing
+PUBLIC_BASE_URL=http://127.0.0.1:8000
+```
 
-### Getting Help
+---
 
-If you encounter any issues or have specific suggestions, please first consider [raising an issue](https://github.com/GoogleCloudPlatform/generative-ai/issues) on our GitHub repository.
+## Notes
 
-### Share Your Experience
-
-For other types of feedback, or if you'd like to share a positive experience or success story using this starter pack, we'd love to hear from you! You can reach out to us at <a href="mailto:agent-starter-pack@google.com">agent-starter-pack@google.com</a>.
-
-Thank you for your contributions!
-
-## Disclaimer
-
-This repository is for demonstrative purposes only and is not an officially supported Google product.
-
-## Terms of Service
-
-The agent-starter-pack templating CLI and the templates in this starter pack leverage Google Cloud APIs. When you use this starter pack, you'll be deploying resources in your own Google Cloud project and will be responsible for those resources. Please review the [Google Cloud Service Terms](https://cloud.google.com/terms/service-terms) for details on the terms of service associated with these APIs.
+- This is an MVP / proof of concept built for a school assignment (BCU24D-LIA1)
+- The GCP Agent Starter Pack was used as the initial project scaffold
+- Minting uses the Sepolia testnet — no real ETH is required
