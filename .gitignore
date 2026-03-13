@@ -200,3 +200,6 @@ docs/.vitepress/cache
 
 # Claude Code
 .claude/
+
+# Generated preview images
+mintmuse-agent/app/storage/previews/
