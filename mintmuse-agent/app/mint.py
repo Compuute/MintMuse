@@ -29,6 +29,10 @@ logging.basicConfig(
 # Load environment variables securely
 # -----------------------------------------------------------------------------
 RPC_URL = get_env_var("RPC_URL") or exit("❌ Missing RPC_URL in .env")
+
+# Detect network from RPC URL so we can build the correct Etherscan link
+_IS_SEPOLIA = "sepolia" in RPC_URL.lower()
+ETHERSCAN_BASE = "https://sepolia.etherscan.io/tx" if _IS_SEPOLIA else None
 PRIVATE_KEY = get_env_var("PRIVATE_KEY") or exit("❌ Missing PRIVATE_KEY in .env")
 ACCOUNT_ADDRESS = get_env_var("ACCOUNT_ADDRESS") or exit("❌ Missing ACCOUNT_ADDRESS in .env")
 CONTRACT_ADDRESS = get_env_var("CONTRACT_ADDRESS") or exit("❌ Missing CONTRACT_ADDRESS in .env")
@@ -138,11 +142,12 @@ def mint_nft(recipient_address: str, token_uri: str) -> dict:
         nonce = w3.eth.get_transaction_count(ACCOUNT_ADDRESS)
 
         # Build the transaction for minting
+        # Use dynamic gas price so it works on both local Hardhat and Sepolia
         tx = contract.functions.mintNFT(recipient_address, token_uri).build_transaction({
             "from": ACCOUNT_ADDRESS,
             "nonce": nonce,
-            "gas": 500_000,  # a bit higher to avoid out-of-gas surprises
-            "gasPrice": w3.to_wei("10", "gwei"),
+            "gas": 500_000,       # a bit higher to avoid out-of-gas surprises
+            "gasPrice": w3.eth.gas_price,  # auto: ~1 gwei local, current rate on Sepolia
         })
 
         # Sign transaction using the private key
@@ -164,13 +169,16 @@ def mint_nft(recipient_address: str, token_uri: str) -> dict:
         else:
             logger.warning("⚠️ Mint confirmed but could not extract token_id from Transfer event.")
 
+        # Build Etherscan link — only valid on Sepolia, None on local Hardhat
+        etherscan_url = f"{ETHERSCAN_BASE}/{tx_hex}" if ETHERSCAN_BASE else None
+
         # Return structured response for API or frontend
         return {
             "status": "success",
             "recipient": recipient_address,
             "tx_hash": tx_hex,
-            "token_id": token_id,  # NEW
-            "etherscan_link": f"https://etherscan.io/tx/{tx_hex}",
+            "token_id": token_id,
+            "etherscan_url": etherscan_url,  # clickable link (None on local)
         }
 
     except InvalidAddress as e:

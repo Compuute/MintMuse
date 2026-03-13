@@ -1,42 +1,69 @@
 # mintmuse-agent/app/generate_image.py
 
-from google import genai
-from google.genai import types
-from .config import get_env_var
+import os
+import time
+import logging
+import requests
 
-# Load project- och region från .env
-PROJECT_ID = get_env_var("GCP_PROJECT_ID")
-LOCATION = get_env_var("GCP_LOCATION", default="us-central1")
+logger = logging.getLogger(__name__)
 
-def generate_image(prompt: str, model: str = "imagen-4.0-generate-001") -> str:
+# Hugging Face Inference API — free with a HF account
+# Change HF_MODEL in .env to try different models
+HF_TOKEN = os.getenv("HF_TOKEN", "")
+HF_MODEL = os.getenv("HF_MODEL", "black-forest-labs/FLUX.1-schnell")
+HF_API_URL = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL}"
+
+# Max seconds to wait if model is loading (HF cold start)
+HF_MAX_WAIT_SEC = int(os.getenv("HF_MAX_WAIT_SEC", "120"))
+
+
+def generate_image_bytes(prompt: str) -> tuple[bytes, str]:
     """
-    Generate an image using Vertex AI Imagen model.
+    Generate an image via the Hugging Face Inference API (free with HF account).
 
     Parameters:
-    - prompt: the text prompt to guide the image generation
-    - model: Imagen model version; default is "imagen-4.0-generate-001"
+    - prompt: text prompt guiding the image generation
 
     Returns:
-    - A URL or base64 string of the generated image
+    - (image_bytes, mime_type)
+
+    Requires HF_TOKEN to be set in .env.
+    Raises an exception on failure — caller is responsible for fallback.
     """
+    if not HF_TOKEN:
+        raise ValueError(
+            "HF_TOKEN is missing from .env — create a token at huggingface.co/settings/tokens"
+        )
 
-    client = genai.Client()
+    headers = {
+        "Authorization": f"Bearer {HF_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {"inputs": prompt}
 
-    response = client.models.generate_images(
-        model=model,
-        prompt=prompt,
-        config=types.GenerateImagesConfig(
-            number_of_images=1,
-        ),
-    )
-    # Take the first generated image
-    generated = response.generated_images[0]
+    logger.info(f"HuggingFace: generating image with model '{HF_MODEL}'")
+    logger.info(f"Prompt: '{prompt[:80]}'")
 
-    # The SDK returns an object where .image.image_bytes is bytes
-    img_bytes = generated.image.image_bytes
+    waited = 0
+    while True:
+        response = requests.post(HF_API_URL, headers=headers, json=payload, timeout=120)
 
-    # Convert bytes to base64 or upload to storage & return URL
-    # For simplicity we convert to base64 URL
-    import base64
-    b64 = base64.b64encode(img_bytes).decode("utf-8")
-    return f"data:{generated.mime_type};base64,{b64}"
+        # 503 = model is loading (cold start) — wait and retry
+        if response.status_code == 503 and waited < HF_MAX_WAIT_SEC:
+            try:
+                wait_hint = response.json().get("estimated_time", 20)
+            except Exception:
+                wait_hint = 20
+            wait_sec = min(float(wait_hint), 30)
+            logger.info(f"HuggingFace: model loading, waiting {wait_sec:.0f}s...")
+            time.sleep(wait_sec)
+            waited += wait_sec
+            continue
+
+        response.raise_for_status()
+        break
+
+    mime_type = response.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+    logger.info(f"HuggingFace: done — size={len(response.content)} bytes, mime={mime_type}")
+
+    return response.content, mime_type

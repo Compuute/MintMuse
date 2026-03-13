@@ -51,6 +51,49 @@ def _local_token_uri(file_id: str) -> str:
     return f"{base}/metadata/{file_id}.json"
 
 
+# -----------------------------------------------------------------------------
+# NEW: Upload a binary asset (e.g., PNG) to Lighthouse and return ipfs://<cid>
+# -----------------------------------------------------------------------------
+def upload_file_to_lighthouse(file_path: str) -> str:
+    """
+    Upload a binary file (e.g. PNG) to Lighthouse and return ipfs://<cid>.
+    Raises LighthouseStorageError on failure (caller can decide fallback behavior).
+    """
+    url = "https://node.lighthouse.storage/api/v0/add"
+
+    if not LIGHTHOUSE_API_KEY:
+        raise LighthouseStorageError("LIGHTHOUSE_API_KEY missing.")
+
+    if not os.path.exists(file_path):
+        raise LighthouseStorageError(f"File not found: {file_path}")
+
+    headers = {"Authorization": f"Bearer {LIGHTHOUSE_API_KEY}"}
+
+    try:
+        with open(file_path, "rb") as f:
+            files = {"file": f}
+            response = requests.post(url, headers=headers, files=files, timeout=(5,60))
+            response.raise_for_status()
+
+        try:
+            body = response.json()
+        except ValueError as e:
+            logger.error(f"❌ Could not decode Lighthouse response as JSON: {e}")
+            raise LighthouseStorageError("Could not decode Lighthouse response as JSON.") from e
+
+        cid = body.get("Hash") or (body.get("data") or {}).get("Hash")
+        if not cid:
+            logger.error(f"❌ Lighthouse response missing CID/Hash: {body}")
+            raise LighthouseStorageError(f"Lighthouse response missing CID/Hash: {body}")
+
+        ipfs_uri = f"ipfs://{cid}"
+        logger.info(f"✅ File uploaded to Lighthouse. CID={cid}")
+        return ipfs_uri
+
+    except requests.RequestException as e:
+        raise LighthouseStorageError(f"Upload failed: {e}") from e
+
+
 def upload_metadata_to_lighthouse(metadata: Dict[str, Any]) -> str:
     """
     Uploads NFT metadata JSON to Lighthouse and returns an ipfs://<cid> URI.

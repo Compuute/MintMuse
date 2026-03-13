@@ -197,3 +197,6 @@ cleanup_e2e_projects.sh
 .cloudbuild/terraform/backend.tf
 .cloudbuild/terraform/vars/env.tfvars
 docs/.vitepress/cache
+
+# Claude Code
+.claude/

@@ -20,3 +20,4 @@ google-auth-httplib2
 google-api-python-client
 google-cloud-storage
 google-cloud-aiplatform
+google-genai

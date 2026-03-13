@@ -1,22 +1,31 @@
 # app/routes/mint_route.py
 
+import logging
 import os
 import uuid
 from typing import Any, Dict, Optional
-from PIL import Image, ImageDraw, ImageFont
+
+logger = logging.getLogger(__name__)
+
+from PIL import Image, ImageDraw
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+# NEW: Gemini SDK (reads GEMINI_API_KEY from environment)
+from google import genai
+
 from ..mint import mint_nft
 from app.services.lighthouse_storage_client import (
     upload_metadata_to_lighthouse,
+    upload_file_to_lighthouse,  # NEW
     LighthouseStorageError,
 )
 from app.config import get_env_var
 
 # Optional: Import logic from agent (can be activated later)
 # from agents.root_agent import run_agent_chain
+
 # IMPORTANT:
 # Do NOT set prefix="/api" here because main.py already adds prefix="/api"
 router = APIRouter()
@@ -24,6 +33,44 @@ router = APIRouter()
 DEFAULT_RECIPIENT = get_env_var("ACCOUNT_ADDRESS")
 if not DEFAULT_RECIPIENT:
     raise ValueError("ACCOUNT_ADDRESS environment variable is not set")
+
+# -----------------------------------------------------------------------------
+# 0) Gemini toggle + helper (minimal change, safe fallback)
+# -----------------------------------------------------------------------------
+# If USE_GEMINI=true, /api/generate will first enhance the prompt via Gemini,
+# then continue the exact same preview + metadata flow as before.
+USE_GEMINI = os.getenv("USE_GEMINI", "false").lower() == "true"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")  # Fast default model
+
+# Image generation toggle — set USE_IMAGEN=true in .env to enable AI image generation
+USE_IMAGEN = os.getenv("USE_IMAGEN", "false").lower() == "true"
+
+
+def _gemini_prompt_enhance(user_prompt: str) -> str:
+    """
+    Enhance the user's prompt using Gemini (text-only).
+    Returns a single string. If Gemini returns empty text, the original prompt is used.
+
+    IMPORTANT:
+    - This function must not break the existing /api/generate flow.
+    - Any exception should be handled by the caller and fallback to original prompt.
+    """
+    client = genai.Client()  # Automatically reads GEMINI_API_KEY from environment
+
+    system_instructions = (
+        "You are an expert prompt engineer for image generation.\n"
+        "Rewrite the user's idea into a concise, high-quality image prompt.\n"
+        "Return ONLY the final prompt as plain text (no markdown, no JSON)."
+    )
+
+    resp = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[system_instructions, f"User idea: {user_prompt.strip()}"],
+    )
+
+    enhanced = (getattr(resp, "text", "") or "").strip()
+    return enhanced if enhanced else user_prompt
+
 
 # -----------------------------------------------------------------------------
 # 1) Simple AI generation stub  ->  POST /api/generate
@@ -51,6 +98,7 @@ async def generate_asset(request: GenerateRequest):
       - Replace this with a real AI call (e.g. Gemini / OpenAI).
       - Upload the generated asset + metadata to IPFS/Arweave.
     """
+
     try:
         # ---------------------------------------------------------------------
         # NEW: Create a LOCAL preview image (fastest path).
@@ -58,49 +106,127 @@ async def generate_asset(request: GenerateRequest):
         # ---------------------------------------------------------------------
         os.makedirs("app/storage/previews", exist_ok=True)
 
-        filename = f"{uuid.uuid4()}.png"
+        # File name is determined after generation to match the mime-type extension
+        file_id = str(uuid.uuid4())
+
+        # ---------------------------------------------------------------------
+        # Optionally enhance the prompt via Gemini
+        # - If Gemini fails, fallback to the original request.prompt
+        # ---------------------------------------------------------------------
+        raw_prompt = (request.prompt or "").strip()
+        final_prompt = raw_prompt
+        gemini_used = False
+
+        if USE_GEMINI and raw_prompt:
+            try:
+                final_prompt = _gemini_prompt_enhance(raw_prompt)
+                gemini_used = (final_prompt.strip() != raw_prompt.strip())
+            except Exception:
+                final_prompt = raw_prompt
+                gemini_used = False
+
+        # ---------------------------------------------------------------------
+        # IMAGE GENERATION: Try AI generation → fall back to PIL on failure
+        # ---------------------------------------------------------------------
+        imagen_used = False
+        filename = f"{file_id}.png"   # default, updated below based on mime-type
         rel_path = f"app/storage/previews/{filename}"
 
-        # Create a simple preview image with the prompt text (stub preview)
-        img = Image.new("RGB", (800, 500), color=(20, 20, 30))
-        draw = ImageDraw.Draw(img)
+        if USE_IMAGEN:
+            try:
+                from ..generate_image import generate_image_bytes
+                img_bytes, mime_type = generate_image_bytes(final_prompt)
+                # Pick the right file extension based on mime-type
+                ext = "jpg" if "jpeg" in mime_type else "png"
+                filename = f"{file_id}.{ext}"
+                rel_path = f"app/storage/previews/{filename}"
+                with open(rel_path, "wb") as f:
+                    f.write(img_bytes)
+                imagen_used = True
+                logger.info(f"AI image saved to {rel_path}")
+            except Exception as img_err:
+                logger.warning(f"AI image generation failed, falling back to PIL: {img_err}")
 
-        # Keep the text short so it fits nicely in the preview
-        prompt_text = (request.prompt or "").strip()
-        if len(prompt_text) > 80:
-            prompt_text = prompt_text[:77] + "..."
+        if not imagen_used:
+            # PIL fallback: renders a text preview image with the prompt
+            import textwrap
+            img = Image.new("RGB", (800, 500), color=(245, 245, 250))
+            draw = ImageDraw.Draw(img)
 
-        text = f"MintMuse\nLocal Preview\n\n{prompt_text}"
-        draw.multiline_text(
-            (400, 250),
-            text,
-            fill=(200, 200, 255),
-            anchor="mm",
-            align="center",
-        )
+            # Header banner
+            draw.rectangle([(0, 0), (800, 80)], fill=(79, 70, 229))
+            draw.text((400, 40), "✦ MintMuse NFT Preview ✦", fill=(255, 255, 255), anchor="mm")
 
-        img.save(rel_path)
+            # Divider
+            draw.rectangle([(40, 95), (760, 97)], fill=(200, 195, 245))
 
-        # IMPORTANT: Use 127.0.0.1 to match how you test locally via curl/browser
+            # Prompt label
+            draw.text((400, 125), "Prompt", fill=(99, 102, 241), anchor="mm")
+
+            # Wrap prompt text so it fits on the image
+            prompt_text = (final_prompt or "").strip()
+            wrapped = textwrap.fill(prompt_text, width=60)
+            lines = wrapped.splitlines()
+            if len(lines) > 5:
+                lines = lines[:4]
+                lines[-1] = lines[-1][:57] + "..."
+            wrapped = "\n".join(lines)
+
+            draw.multiline_text(
+                (400, 260),
+                wrapped,
+                fill=(30, 27, 75),
+                anchor="mm",
+                align="center",
+                spacing=8,
+            )
+
+            # Footer
+            draw.rectangle([(0, 460), (800, 500)], fill=(238, 237, 255))
+            draw.text((400, 480), "PIL fallback · Local dev preview", fill=(99, 102, 241), anchor="mm")
+
+            img.save(rel_path)
+
+        # Use 127.0.0.1 to match local testing via curl/browser
         preview_url = f"http://127.0.0.1:8000/previews/{filename}"
+
+        # Best-effort upload the image to Lighthouse/IPFS.
+        # If Lighthouse fails, keep the local preview URL so nothing breaks.
+        image_uri_for_metadata = preview_url
+        try:
+            image_uri_for_metadata = upload_file_to_lighthouse(rel_path)
+        except LighthouseStorageError:
+            pass
+
+        # Dynamic NFT name from the prompt (first 5 words, capitalized)
+        name_words = (final_prompt or raw_prompt).split()[:5]
+        nft_name = " ".join(w.capitalize() for w in name_words) if name_words else "MintMuse NFT"
+
+        # Pick generator label based on what was actually used
+        if imagen_used:
+            generator_value = "Hugging Face FLUX"
+        elif gemini_used:
+            generator_value = "Gemini-enhanced PIL"
+        else:
+            generator_value = "PIL stub"
 
         return GenerateResponse(
             preview_url=preview_url,
             metadata={
-                "name": "Test MintMuse NFT",
-                "description": f"AI-generated asset based on prompt: {request.prompt}",
-                # NEW: Include standard NFT metadata field "image"
-                # (Your UI can prefer metadata.image if it wants.)
-                "image": preview_url,
+                "name": nft_name,
+                "description": f"AI-generated NFT based on prompt: {final_prompt}",
+                "image": image_uri_for_metadata,
+                "original_prompt": raw_prompt,
+                "gemini_used": gemini_used,
+                "imagen_used": imagen_used,
                 "attributes": [
-                    {"trait_type": "generator", "value": "MintMuse stub"},
+                    {"trait_type": "generator", "value": generator_value},
                     {"trait_type": "env", "value": "local-dev"},
                 ],
             },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
-
 
 
 # -----------------------------------------------------------------------------
@@ -117,9 +243,11 @@ class UIMintResponse(BaseModel):
     """Response body returned to the React frontend after REAL mint."""
     status: str
     tx_hash: str
-    token_id: Optional[int]  # tokenId may be None if event parsing fails
+    token_id: Optional[int]       # tokenId may be None if event parsing fails
     metadata_received: Dict[str, Any]
     token_uri: str
+    storage_used: Optional[str] = None
+    etherscan_url: Optional[str] = None  # clickable link on Sepolia, None on local
 
 
 @router.post("/mint", response_model=UIMintResponse)
@@ -144,8 +272,12 @@ async def ui_mint_endpoint(request: UIMintRequest):
         # ---------------------------------------------------------------------
         try:
             token_uri = upload_metadata_to_lighthouse(request.metadata)
+            storage_used = "lighthouse"
         except LighthouseStorageError as e:
-            raise HTTPException(status_code=500, detail=f"Metadata upload failed: {e}")
+          # Fallback to local storage
+          logger.warning(f"Lighthouse unavailable, using local storage fallback. {e}")
+          token_uri = "ipfs://DEMO_FALLBACK_METADATA"
+          storage_used = "fallback"
 
         # ---------------------------------------------------------------------
         # 2) Determine who receives the NFT
@@ -165,8 +297,9 @@ async def ui_mint_endpoint(request: UIMintRequest):
             error_msg = result.get("error", "Unknown error while minting")
             raise HTTPException(status_code=500, detail=f"Minting failed: {error_msg}")
 
-        tx_hash = result.get("tx_hash")
-        token_id = result.get("token_id")  # NEW: real tokenId (or None)
+        tx_hash       = result.get("tx_hash")
+        token_id      = result.get("token_id")       # real tokenId (or None)
+        etherscan_url = result.get("etherscan_url")  # Sepolia link (or None on local)
 
         if not tx_hash:
             raise HTTPException(status_code=500, detail="Minting succeeded but tx_hash is missing.")
@@ -180,6 +313,8 @@ async def ui_mint_endpoint(request: UIMintRequest):
             token_id=token_id,
             metadata_received=request.metadata,
             token_uri=token_uri,
+            storage_used=storage_used,
+            etherscan_url=etherscan_url,
         )
 
     except HTTPException:
