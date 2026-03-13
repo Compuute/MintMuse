@@ -1,96 +1,116 @@
 # MintMuse Contracts
 
-This directory contains the **Solidity smart contracts** and Hardhat configuration used for the **MintMuseNFT** deployment.  
+This directory contains the **Solidity smart contracts** and Hardhat configuration used for the **MintMuseNFT** deployment.
 It provides the blockchain layer for the MintMuse MVP and integrates with the backend (`mintmuse-agent`) via the deployed contract ABI and address.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
+```
 contracts/
-├── contracts/ # Solidity smart contracts
-│ └── MintMuseNFT.sol # ERC721 NFT contract (MintMuse core)
-├── scripts/ # Deployment and utility scripts
-│ └── deploy.mjs # Deployment script using Hardhat + ESM
-├── artifacts/ # Auto-generated build artifacts (ABI, bytecode)
-├── cache/ # Hardhat build cache
-├── test/ # Contract test files (Mocha/Chai)
-├── hardhat.config.cjs # Hardhat configuration (uses CJS syntax)
-├── package.json # Node.js dependencies
-├── package-lock.json # Dependency lock file
-└── README.md # This file
+├── contracts/
+│   └── MintMuseNFT.sol       # ERC-721 NFT contract
+├── scripts/
+│   ├── deploy.mjs             # Deployment script (ESM)
+│   └── modules/               # Ignition deploy modules
+├── ignition/                  # Hardhat Ignition config
+├── artifacts/                 # Auto-generated ABI + bytecode (git-ignored)
+├── cache/                     # Hardhat build cache (git-ignored)
+├── test/                      # Contract tests (Mocha/Chai)
+├── hardhat.config.cjs         # Hardhat configuration
+├── package.json
+└── README.md
+```
 
+---
 
 ## Requirements
 
-Before running contracts locally, ensure you have:  
-- **Node.js 18+** and **npm** installed  
-- **Hardhat**: Ethereum development environment – [Docs](https://hardhat.org)  
-- **Ganache / Hardhat Network** (local blockchain)  
-- **OpenZeppelin Contracts** library  
+- Node.js 18+
+- npm
 
-Install dependencies:  
+Install dependencies:
+
 ```bash
 npm install
+```
 
-🚀 Quick Start (Local Testing)
+---
 
-1. Start a local Hardhat node
+## Quick Start (Local)
+
+**1. Start a local Hardhat node:**
+
+```bash
 npx hardhat node
+```
 
-2. Compile contracts
+**2. Compile contracts:**
+
+```bash
 npx hardhat compile
+```
 
-3. Deploy contract locally
+**3. Deploy locally:**
+
+```bash
 npx hardhat run scripts/deploy.mjs --network localhost
+```
 
 Expected output:
+```
 🚀 Deploying contract using account: 0x...
 ✅ MintMuseNFT deployed at address: 0x...
-📄 ABI and contract address saved to: ../solidity/MintMuseNFT.json
+📄 ABI saved to: ../solidity/MintMuseNFT.json
+```
 
-This JSON file is used by the Python backend (mintmuse-agent) to interact with the contract.
+**4. Run tests:**
 
-4. Run tests
+```bash
 npx hardhat test
+```
 
-🌐 Deploy to Testnet / Mainnet
+---
 
-Edit your hardhat.config.cjs with network settings (Infura, Alchemy, etc.), then run:
+## Deploy to Sepolia Testnet
 
-npx hardhat run scripts/deploy.mjs --network goerli
+Add your network config to `hardhat.config.cjs`, then run:
 
-💡 Smart Contract Summary
-MintMuseNFT.sol
-    Standard: ERC721 (NFT) with metadata storage
+```bash
+npx hardhat run scripts/deploy.mjs --network sepolia
+```
 
-    Features:
+The deploy script saves the contract address and ABI to `../solidity/MintMuseNFT.json`, which is used by the Python backend (`mintmuse-agent`) to interact with the contract.
 
-        .mintNFT(address recipient, string memory tokenURI) → Creates a new NFT and assigns it
+---
 
-        .Uses Ownable (only owner can mint)
+## Smart Contract Summary
 
-        .Metadata stored on-chain (tokenURI)
+**MintMuseNFT.sol**
 
-        .Constructor: 
-            constructor(address initialOwner) 
-                ERC721("MintMuseNFT", "MMNFT") 
-                Ownable(initialOwner) {}
+| Property | Value |
+|---|---|
+| Standard | ERC-721 |
+| Token Name | MintMuseNFT |
+| Symbol | MMNFT |
+| Access Control | Ownable (only owner can mint) |
 
-🧪 Run Tests
-npx hardhat test
+**Key function:**
 
-🛠️ Troubleshooting
-Common errors and fixes:
+```solidity
+function mintNFT(address recipient, string memory tokenURI) public onlyOwner
+```
 
-    HH700: Artifact for contract not found
-    → Ensure MintMuseNFT.sol is inside contracts/ and re-run npx hardhat compile.
+Mints a new NFT to `recipient` with the given `tokenURI` (IPFS metadata URI).
 
-    ECONNRESET during deployment
-    → Make sure npx hardhat node is running in another terminal before deploying.
+---
 
-    TypeError: nft.deployed is not a function
-    → Use await nft.waitForDeployment() instead of .deployed() in deploy scripts.
+## Troubleshooting
 
-    invalid overrides parameter
-    → Check constructor arguments in deploy.mjs match your contract.
+| Error | Fix |
+|---|---|
+| `HH700: Artifact not found` | Make sure `MintMuseNFT.sol` is inside `contracts/` and run `npx hardhat compile` |
+| `ECONNRESET during deployment` | Ensure `npx hardhat node` is running in a separate terminal |
+| `nft.deployed is not a function` | Use `await nft.waitForDeployment()` instead of `.deployed()` |
+| `invalid overrides parameter` | Check that constructor arguments in `deploy.mjs` match the contract |
